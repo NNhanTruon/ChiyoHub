@@ -12,8 +12,10 @@ local Window = Fluent:CreateWindow({
     MinimizeKey = Enum.KeyCode.LeftControl
 })
 
+-- KHỞI TẠO CÁC TAB (Thêm tab Event)
 local Tabs = {
     Main = Window:AddTab({ Title = "Main", Icon = "play" }),
+    Event = Window:AddTab({ Title = "Event", Icon = "calendar" }), -- Tab Event riêng biệt
     Settings = Window:AddTab({ Title = "Settings", Icon = "settings" })
 }
 
@@ -40,16 +42,18 @@ local Config = {
     Mode = "Infinite", 
     SelectedMap = infMaps[1] or "Rome",
     Stage = 1,
-    AutoLoop = false
+    AutoLoop = false,
+    AutoEvent = false -- Biến cấu hình cho Event
 }
 
--- --- GIAO DIỆN CHÍNH (GUI) ---
+-- =======================================================
+--                     TAB MAIN (GUI)
+-- =======================================================
 Tabs.Main:AddParagraph({
     Title = "Trạng thái hệ thống",
     Content = "Hãy cấu hình chế độ chơi và nhấn Bật Auto."
 })
 
--- Chọn chế độ
 local ModeDropdown = Tabs.Main:AddDropdown("GameMode", {
     Title = "Chọn Chế Độ Chơi",
     Values = {"Infinite", "Raid"},
@@ -57,7 +61,6 @@ local ModeDropdown = Tabs.Main:AddDropdown("GameMode", {
     Default = "Infinite",
 })
 
--- Chọn map (Cập nhật danh sách theo chế độ)
 local MapDropdown = Tabs.Main:AddDropdown("MapSelect", {
     Title = "Chọn Bản Đồ (Map)",
     Values = infMaps,
@@ -65,7 +68,6 @@ local MapDropdown = Tabs.Main:AddDropdown("MapSelect", {
     Default = infMaps[1],
 })
 
--- ĐÃ CHUYỂN ĐỔI: Sử dụng Dropdown thay vì Slider để chọn Stage
 local StageDropdown = Tabs.Main:AddDropdown("StageSelect", {
     Title = "Chọn Stage",
     Description = "Chọn phân đoạn từ 1 đến 6 (Áp dụng cho cả Inf và Raid)",
@@ -89,22 +91,37 @@ MapDropdown:OnChanged(function(Value)
     Config.SelectedMap = Value
 end)
 
--- Lắng nghe thay đổi của Stage Dropdown và ép kiểu về Number
 StageDropdown:OnChanged(function(Value)
     Config.Stage = tonumber(Value) or 1
 end)
 
--- Công tắc kích hoạt Loop
-local ToggleAuto = Tabs.Main:AddToggle("AutoJoinToggle", {Title = "Bật Auto Loop (Mỗi 5s)", Default = false })
-
+local ToggleAuto = Tabs.Main:AddToggle("AutoJoinToggle", {Title = "Bật Auto Loop Dungeon", Default = false })
 ToggleAuto:OnChanged(function()
     Config.AutoLoop = Options.AutoJoinToggle.Value
 end)
 
--- --- HÀM XỬ LÝ LOGIC CHẠM VÀ GỬI REMOTE ---
+
+-- =======================================================
+--                     TAB EVENT (GUI)
+-- =======================================================
+Tabs.Event:AddParagraph({
+    Title = "Cấu hình Event Maid Sash",
+    Content = "Tự động dịch chuyển đến Maid Sash, tương tác ProximityPrompt và gửi lệnh tham gia portal."
+})
+
+local ToggleEvent = Tabs.Event:AddToggle("AutoEventToggle", {Title = "Bật Auto Join Event", Default = false })
+ToggleEvent:OnChanged(function()
+    Config.AutoEvent = Options.AutoEventToggle.Value
+end)
+
+
+-- =======================================================
+--                   LOGIC XỬ LÝ GAME
+-- =======================================================
 local Remote = game:GetService("ReplicatedStorage"):WaitForChild("API"):WaitForChild("Utils"):WaitForChild("network"):WaitForChild("RemoteEvent")
 local LocalPlayer = game.Players.LocalPlayer
 
+-- Hàm giả lập chạm bộ phận (Dùng cho Dungeon)
 local function fireTouch(targetPart)
     if not targetPart then return end
     local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
@@ -116,60 +133,88 @@ local function fireTouch(targetPart)
     end
 end
 
-local function runSequence()
+-- Chuỗi hành động chạy Dungeon
+local function runDungeonSequence()
     local targetStage = tonumber(Config.Stage) or 1
     
     if Config.Mode == "Infinite" then
-        -- Bước 1: Giả lập chạm phòng Infinite thứ 4
         local infRooms = workspace:WaitForChild("Rooms"):WaitForChild("infinite")
         local targetRoom = infRooms:GetChildren()[4]
         if targetRoom and targetRoom:FindFirstChild("Touch") then
             fireTouch(targetRoom.Touch)
         end
         task.wait(0.5)
-
-        -- Bước 2: Chọn màn hình Infinite với số Stage lấy từ Dropdown
         Remote:FireServer(unpack({"room_select", Config.SelectedMap, targetStage}))
         task.wait(0.5)
-
-        -- Bước 3: Vào màn
         Remote:FireServer(unpack({"room_start"}))
 
     elseif Config.Mode == "Raid" then
-        -- Bước 1: Giả lập chạm phòng Raid thứ 6
         local raidRooms = workspace:WaitForChild("Rooms"):WaitForChild("raid")
         local targetRoom = raidRooms:GetChildren()[6]
         if targetRoom and targetRoom:FindFirstChild("Touch") then
             fireTouch(targetRoom.Touch)
         end
         task.wait(1.5)
-
-        -- Bước 2: Chọn màn hình Raid với số Stage lấy từ Dropdown
         Remote:FireServer(unpack({"room_select", Config.SelectedMap, targetStage}))
         task.wait(1.5)
-
-        -- Bước 3: Vào màn
         Remote:FireServer(unpack({"room_start"}))
     end
 end
 
--- --- VÒNG LẶP CHẠY NGẦM THỜI GIAN 5 GIÂY ---
+-- Hàm di chuyển và tương tác Event (Đoạn code mới được tích hợp vào)
+local function runEventSequence()
+    local npc = workspace:FindFirstChild("Maid Sash")
+    local character = LocalPlayer.Character
+    
+    if npc and character and character:FindFirstChild("HumanoidRootPart") then
+        local targetPos = npc:GetPivot().Position
+        local hrp = character.HumanoidRootPart
+        local distance = (hrp.Position - targetPos).Magnitude
+        
+        if distance > 10 then
+            hrp.CFrame = CFrame.new(targetPos)
+        else
+            local prompt = npc:FindFirstChildWhichIsA("ProximityPrompt", true)
+            if prompt then
+                fireproximityprompt(prompt)
+            end
+            Remote:FireServer(unpack({"portal_start"}))
+        end
+    end
+end
+
+-- =======================================================
+--                 VÒNG LẶP CHẠY NGẦM (LOOP)
+-- =======================================================
+
+-- Vòng lặp chính cho Dungeon (Mỗi 5 giây)
 task.spawn(function()
     while true do
         task.wait(5)
         if Config.AutoLoop then
-            local success, err = pcall(function()
-                runSequence()
-            end)
-            if not success then
-                warn("Lỗi thực thi Auto Loop: ", err)
-            end
+            local success, err = pcall(runDungeonSequence)
+            if not success then warn("Lỗi thực thi Auto Dungeon: ", err) end
         end
         if Fluent.Unloaded then break end
     end
 end)
 
--- Quản lý cấu hình lưu trữ tiện ích Fluent
+-- Vòng lặp chính cho Event (Mỗi 1 giây theo đúng gốc ban đầu của bạn)
+task.spawn(function()
+    while true do
+        task.wait(1)
+        if Config.AutoEvent then
+            local success, err = pcall(runEventSequence)
+            if not success then warn("Lỗi thực thi Auto Event: ", err) end
+        end
+        if Fluent.Unloaded then break end
+    end
+end)
+
+
+-- =======================================================
+--                 QUẢN LÝ CẤU HÌNH (SETTINGS)
+-- =======================================================
 SaveManager:SetLibrary(Fluent)
 InterfaceManager:SetLibrary(Fluent)
 SaveManager:IgnoreThemeSettings()
@@ -183,7 +228,7 @@ Window:SelectTab(Tabs.Main)
 
 Fluent:Notify({
     Title = "Hệ thống sẵn sàng",
-    Content = "Đã chuyển đổi Stage sang dạng Dropdown thành công!",
+    Content = "Đã tích hợp thành công Tab Event!",
     Duration = 5
 })
 
