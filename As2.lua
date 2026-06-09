@@ -12,10 +12,10 @@ local Window = Fluent:CreateWindow({
     MinimizeKey = Enum.KeyCode.LeftControl
 })
 
--- KHỞI TẠO CÁC TAB (Thêm tab Event)
+-- KHỞI TẠO CÁC TAB
 local Tabs = {
     Main = Window:AddTab({ Title = "Main", Icon = "play" }),
-    Event = Window:AddTab({ Title = "Event", Icon = "calendar" }), -- Tab Event riêng biệt
+    Event = Window:AddTab({ Title = "Event", Icon = "calendar" }),
     Settings = Window:AddTab({ Title = "Settings", Icon = "settings" })
 }
 
@@ -36,15 +36,6 @@ end
 
 local infMaps = getMapList(game:GetService("ReplicatedStorage"):WaitForChild("API"):WaitForChild("Gamemode"):WaitForChild("story"))
 local raidMaps = getMapList(game:GetService("ReplicatedStorage"):WaitForChild("API"):WaitForChild("Gamemode"):WaitForChild("raid"))
-
--- --- CÁC BIẾN CẤU HÌNH ---
-local Config = {
-    Mode = "Infinite", 
-    SelectedMap = infMaps[1] or "Rome",
-    Stage = 1,
-    AutoLoop = false,
-    AutoEvent = false -- Biến cấu hình cho Event
-}
 
 -- =======================================================
 --                     TAB MAIN (GUI)
@@ -76,30 +67,16 @@ local StageDropdown = Tabs.Main:AddDropdown("StageSelect", {
     Default = "1",
 })
 
+-- Tự động cập nhật danh sách Map hiển thị khi đổi Chế độ chơi
 ModeDropdown:OnChanged(function(Value)
-    Config.Mode = Value
     if Value == "Infinite" then
         MapDropdown:SetValues(infMaps)
-        MapDropdown:SetValue(infMaps[1])
     elseif Value == "Raid" then
         MapDropdown:SetValues(raidMaps)
-        MapDropdown:SetValue(raidMaps[1])
     end
 end)
 
-MapDropdown:OnChanged(function(Value)
-    Config.SelectedMap = Value
-end)
-
-StageDropdown:OnChanged(function(Value)
-    Config.Stage = tonumber(Value) or 1
-end)
-
 local ToggleAuto = Tabs.Main:AddToggle("AutoJoinToggle", {Title = "Bật Auto Loop Dungeon", Default = false })
-ToggleAuto:OnChanged(function()
-    Config.AutoLoop = Options.AutoJoinToggle.Value
-end)
-
 
 -- =======================================================
 --                     TAB EVENT (GUI)
@@ -110,9 +87,6 @@ Tabs.Event:AddParagraph({
 })
 
 local ToggleEvent = Tabs.Event:AddToggle("AutoEventToggle", {Title = "Bật Auto Join Event", Default = false })
-ToggleEvent:OnChanged(function()
-    Config.AutoEvent = Options.AutoEventToggle.Value
-end)
 
 
 -- =======================================================
@@ -121,7 +95,7 @@ end)
 local Remote = game:GetService("ReplicatedStorage"):WaitForChild("API"):WaitForChild("Utils"):WaitForChild("network"):WaitForChild("RemoteEvent")
 local LocalPlayer = game.Players.LocalPlayer
 
--- Hàm giả lập chạm bộ phận (Dùng cho Dungeon)
+-- Hàm giả lập chạm bộ phận
 local function fireTouch(targetPart)
     if not targetPart then return end
     local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
@@ -133,35 +107,37 @@ local function fireTouch(targetPart)
     end
 end
 
--- Chuỗi hành động chạy Dungeon
+-- Chuỗi hành động chạy Dungeon (Đã sửa đổi để lấy trực tiếp từ Options)
 local function runDungeonSequence()
-    local targetStage = tonumber(Config.Stage) or 1
+    local currentMode = Options.GameMode.Value
+    local selectedMap = Options.MapSelect.Value
+    local targetStage = tonumber(Options.StageSelect.Value) or 1
     
-    if Config.Mode == "Infinite" then
+    if currentMode == "Infinite" then
         local infRooms = workspace:WaitForChild("Rooms"):WaitForChild("infinite")
         local targetRoom = infRooms:GetChildren()[4]
         if targetRoom and targetRoom:FindFirstChild("Touch") then
             fireTouch(targetRoom.Touch)
         end
         task.wait(0.5)
-        Remote:FireServer(unpack({"room_select", Config.SelectedMap, targetStage}))
+        Remote:FireServer(unpack({"room_select", selectedMap, targetStage}))
         task.wait(0.5)
         Remote:FireServer(unpack({"room_start"}))
 
-    elseif Config.Mode == "Raid" then
+    elseif currentMode == "Raid" then
         local raidRooms = workspace:WaitForChild("Rooms"):WaitForChild("raid")
         local targetRoom = raidRooms:GetChildren()[6]
         if targetRoom and targetRoom:FindFirstChild("Touch") then
             fireTouch(targetRoom.Touch)
         end
         task.wait(1.5)
-        Remote:FireServer(unpack({"room_select", Config.SelectedMap, targetStage}))
+        Remote:FireServer(unpack({"room_select", selectedMap, targetStage}))
         task.wait(1.5)
         Remote:FireServer(unpack({"room_start"}))
     end
 end
 
--- Hàm di chuyển và tương tác Event (Đoạn code mới được tích hợp vào)
+-- Hàm di chuyển và tương tác Event
 local function runEventSequence()
     local npc = workspace:FindFirstChild("Maid Sash")
     local character = LocalPlayer.Character
@@ -187,11 +163,11 @@ end
 --                 VÒNG LẶP CHẠY NGẦM (LOOP)
 -- =======================================================
 
--- Vòng lặp chính cho Dungeon (Mỗi 5 giây)
+-- Vòng lặp chính cho Dungeon (Kiểm tra trực tiếp từ UI Toggle)
 task.spawn(function()
     while true do
         task.wait(5)
-        if Config.AutoLoop then
+        if Options.AutoJoinToggle and Options.AutoJoinToggle.Value then
             local success, err = pcall(runDungeonSequence)
             if not success then warn("Lỗi thực thi Auto Dungeon: ", err) end
         end
@@ -199,11 +175,11 @@ task.spawn(function()
     end
 end)
 
--- Vòng lặp chính cho Event (Mỗi 1 giây theo đúng gốc ban đầu của bạn)
+-- Vòng lặp chính cho Event (Kiểm tra trực tiếp từ UI Toggle)
 task.spawn(function()
     while true do
         task.wait(1)
-        if Config.AutoEvent then
+        if Options.AutoEventToggle and Options.AutoEventToggle.Value then
             local success, err = pcall(runEventSequence)
             if not success then warn("Lỗi thực thi Auto Event: ", err) end
         end
@@ -228,9 +204,8 @@ Window:SelectTab(Tabs.Main)
 
 Fluent:Notify({
     Title = "Hệ thống sẵn sàng",
-    Content = "Đã tích hợp thành công Tab Event!",
+    Content = "Đã sửa lỗi đồng bộ Config thành công!",
     Duration = 5
 })
 
 SaveManager:LoadAutoloadConfig()
-
