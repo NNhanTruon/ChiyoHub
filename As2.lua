@@ -116,11 +116,18 @@ local TowerModeDropdown = Tabs.Tower:AddDropdown("TowerModeSelect", {
 local ToggleTower = Tabs.Tower:AddToggle("AutoTowerToggle", {Title = "Auto Climb Tower", Default = false })
 
 Tabs.Event:AddParagraph({
-    Title = "Maid Sash Event Configuration",
+    Title = "Maid Sash Event",
     Content = "Teleports to Maid Sash, interacts with the ProximityPrompt, and fires the portal request."
 })
 
-local ToggleEvent = Tabs.Event:AddToggle("AutoEventToggle", {Title = "Auto Join Event", Default = false })
+local ToggleEvent = Tabs.Event:AddToggle("AutoEventToggle", {Title = "Auto Join Event NPC", Default = false })
+
+Tabs.Event:AddParagraph({
+    Title = "Event Dungeon Loop",
+    Content = "Automatically runs 'The Eclipse' (Stage 1, Normal) on loop."
+})
+
+local ToggleEventDungeon = Tabs.Event:AddToggle("AutoEventDungeonToggle", {Title = "Auto Loop Event Dungeon", Default = false })
 
 local Remote = game:GetService("ReplicatedStorage"):WaitForChild("API"):WaitForChild("Utils"):WaitForChild("network"):WaitForChild("RemoteEvent")
 local LocalPlayer = game.Players.LocalPlayer
@@ -139,9 +146,9 @@ end
 local function teleportToNPC(npcInstance)
     if npcInstance and npcInstance:IsA("Model") then
         local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-        local hrp = char:WaitForChild("HumanoidRootPart", 3)
-        if hrp then
-            hrp.CFrame = npcInstance:GetPivot()
+        local root = char:WaitForChild("HumanoidRootPart", 3)
+        if root then
+            root.CFrame = npcInstance:GetPivot()
             task.wait(0.5)
         end
     end
@@ -231,11 +238,11 @@ local function runEventSequence()
     
     if npc and character and character:FindFirstChild("HumanoidRootPart") then
         local targetPos = npc:GetPivot().Position
-        local hrp = character.HumanoidRootPart
-        local distance = (hrp.Position - targetPos).Magnitude
+        local root = character.HumanoidRootPart
+        local distance = (root.Position - targetPos).Magnitude
         
         if distance > 10 then
-            hrp.CFrame = CFrame.new(targetPos)
+            root.CFrame = CFrame.new(targetPos)
         else
             local prompt = npc:FindFirstChildWhichIsA("ProximityPrompt", true)
             if prompt then
@@ -244,6 +251,10 @@ local function runEventSequence()
             Remote:FireServer(unpack({"portal_start"}))
         end
     end
+end
+
+local function runEventDungeonSequence()
+    Remote:FireServer(unpack({"battle_start", "portals", "The Eclipse", 1, "Normal"}))
 end
 
 task.spawn(function()
@@ -285,6 +296,17 @@ task.spawn(function()
         if Options.AutoEventToggle and Options.AutoEventToggle.Value then
             local success, err = pcall(runEventSequence)
             if not success then warn("Auto Event Error: ", err) end
+        end
+        if Fluent.Unloaded then break end
+    end
+end)
+
+task.spawn(function()
+    while true do
+        task.wait(5)
+        if Options.AutoEventDungeonToggle and Options.AutoEventDungeonToggle.Value then
+            local success, err = pcall(runEventDungeonSequence)
+            if not success then warn("Auto Event Dungeon Error: ", err) end
         end
         if Fluent.Unloaded then break end
     end
