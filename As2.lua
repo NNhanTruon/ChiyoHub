@@ -12,9 +12,10 @@ local Window = Fluent:CreateWindow({
     MinimizeKey = Enum.KeyCode.LeftControl
 })
 
--- KHỞI TẠO CÁC TAB
+-- KHỞI TẠO CÁC TAB BIỆT LẬP
 local Tabs = {
     Main = Window:AddTab({ Title = "Main", Icon = "play" }),
+    Story = Window:AddTab({ Title = "Story", Icon = "book" }), -- Tab Story riêng biệt
     Event = Window:AddTab({ Title = "Event", Icon = "calendar" }),
     Settings = Window:AddTab({ Title = "Settings", Icon = "settings" })
 }
@@ -34,15 +35,15 @@ local function getMapList(path)
     return list
 end
 
-local infMaps = getMapList(game:GetService("ReplicatedStorage"):WaitForChild("API"):WaitForChild("Gamemode"):WaitForChild("story"))
+local storyMaps = getMapList(game:GetService("ReplicatedStorage"):WaitForChild("API"):WaitForChild("Gamemode"):WaitForChild("story"))
 local raidMaps = getMapList(game:GetService("ReplicatedStorage"):WaitForChild("API"):WaitForChild("Gamemode"):WaitForChild("raid"))
 
 -- =======================================================
---                     TAB MAIN (GUI)
+--            TAB MAIN (DUNGEON: INFINITE & RAID)
 -- =======================================================
 Tabs.Main:AddParagraph({
-    Title = "Trạng thái hệ thống",
-    Content = "Hãy cấu hình chế độ chơi và nhấn Bật Auto."
+    Title = "Cấu hình Dungeon",
+    Content = "Hãy cấu hình chế độ Infinite hoặc Raid và nhấn Bật Auto."
 })
 
 local ModeDropdown = Tabs.Main:AddDropdown("GameMode", {
@@ -54,29 +55,61 @@ local ModeDropdown = Tabs.Main:AddDropdown("GameMode", {
 
 local MapDropdown = Tabs.Main:AddDropdown("MapSelect", {
     Title = "Chọn Bản Đồ (Map)",
-    Values = infMaps,
+    Values = storyMaps,
     Multi = false,
-    Default = infMaps[1],
+    Default = storyMaps[1],
 })
 
 local StageDropdown = Tabs.Main:AddDropdown("StageSelect", {
     Title = "Chọn Stage",
-    Description = "Chọn phân đoạn từ 1 đến 6 (Áp dụng cho cả Inf và Raid)",
+    Description = "Chọn phân đoạn từ 1 đến 6",
     Values = {"1", "2", "3", "4", "5", "6"},
     Multi = false,
     Default = "1",
 })
 
--- Tự động cập nhật danh sách Map hiển thị khi đổi Chế độ chơi
 ModeDropdown:OnChanged(function(Value)
     if Value == "Infinite" then
-        MapDropdown:SetValues(infMaps)
+        MapDropdown:SetValues(storyMaps)
     elseif Value == "Raid" then
         MapDropdown:SetValues(raidMaps)
     end
 end)
 
 local ToggleAuto = Tabs.Main:AddToggle("AutoJoinToggle", {Title = "Bật Auto Loop Dungeon", Default = false })
+
+
+-- =======================================================
+--                     TAB STORY (RIÊNG BIỆT)
+-- =======================================================
+Tabs.Story:AddParagraph({
+    Title = "Cấu hình Chế Độ Story",
+    Content = "Tự động gửi gói tin battle_start cho chế độ Cốt Truyện."
+})
+
+local StoryMapDropdown = Tabs.Story:AddDropdown("StoryMapSelect", {
+    Title = "Chọn Bản Đồ (Story Map)",
+    Values = storyMaps,
+    Multi = false,
+    Default = storyMaps[1],
+})
+
+local StoryStageDropdown = Tabs.Story:AddDropdown("StoryStageSelect", {
+    Title = "Chọn Stage (1 - 8)",
+    Values = {"1", "2", "3", "4", "5", "6", "7", "8"},
+    Multi = false,
+    Default = "1",
+})
+
+local StoryDifficultyDropdown = Tabs.Story:AddDropdown("StoryDiffSelect", {
+    Title = "Chọn Độ Khó",
+    Values = {"Normal", "Hard", "Nightmare"},
+    Multi = false,
+    Default = "Normal",
+})
+
+local ToggleStory = Tabs.Story:AddToggle("AutoStoryToggle", {Title = "Bật Auto Play Story", Default = false })
+
 
 -- =======================================================
 --                     TAB EVENT (GUI)
@@ -107,7 +140,7 @@ local function fireTouch(targetPart)
     end
 end
 
--- Chuỗi hành động chạy Dungeon (Đã sửa đổi để lấy trực tiếp từ Options)
+-- Xử lý Dungeon (Infinite / Raid)
 local function runDungeonSequence()
     local currentMode = Options.GameMode.Value
     local selectedMap = Options.MapSelect.Value
@@ -137,6 +170,22 @@ local function runDungeonSequence()
     end
 end
 
+-- Xử lý Story riêng
+local function runStorySequence()
+    local selectedMap = Options.StoryMapSelect.Value
+    local targetStage = tonumber(Options.StoryStageSelect.Value) or 1
+    local diff = Options.StoryDiffSelect.Value or "Normal"
+    
+    local args = {
+        "battle_start",
+        "story",
+        selectedMap,
+        targetStage,
+        diff
+    }
+    Remote:FireServer(unpack(args))
+end
+
 -- Hàm di chuyển và tương tác Event
 local function runEventSequence()
     local npc = workspace:FindFirstChild("Maid Sash")
@@ -163,7 +212,7 @@ end
 --                 VÒNG LẶP CHẠY NGẦM (LOOP)
 -- =======================================================
 
--- Vòng lặp chính cho Dungeon (Kiểm tra trực tiếp từ UI Toggle)
+-- Vòng lặp chính cho Dungeon (Mỗi 5 giây)
 task.spawn(function()
     while true do
         task.wait(5)
@@ -175,7 +224,19 @@ task.spawn(function()
     end
 end)
 
--- Vòng lặp chính cho Event (Kiểm tra trực tiếp từ UI Toggle)
+-- Vòng lặp chính cho Story (Mỗi 5 giây)
+task.spawn(function()
+    while true do
+        task.wait(5)
+        if Options.AutoStoryToggle and Options.AutoStoryToggle.Value then
+            local success, err = pcall(runStorySequence)
+            if not success then warn("Lỗi thực thi Auto Story: ", err) end
+        end
+        if Fluent.Unloaded then break end
+    end
+end)
+
+-- Vòng lặp chính cho Event (Mỗi 1 giây)
 task.spawn(function()
     while true do
         task.wait(1)
@@ -204,7 +265,7 @@ Window:SelectTab(Tabs.Main)
 
 Fluent:Notify({
     Title = "Hệ thống sẵn sàng",
-    Content = "Đã sửa lỗi đồng bộ Config thành công!",
+    Content = "Đã tách riêng Tab Story và sửa hoàn toàn lỗi giao diện!",
     Duration = 5
 })
 
