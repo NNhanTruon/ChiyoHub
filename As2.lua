@@ -3,7 +3,7 @@ local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/d
 local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
 
 local Window = Fluent:CreateWindow({
-    Title = "Auto Dungeon Control",
+    Title = "NhanP Hub",
     SubTitle = "Fixed & Optimized Version",
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 460),
@@ -12,17 +12,16 @@ local Window = Fluent:CreateWindow({
     MinimizeKey = Enum.KeyCode.LeftControl
 })
 
--- KHỞI TẠO CÁC TAB BIỆT LẬP
 local Tabs = {
     Main = Window:AddTab({ Title = "Main", Icon = "play" }),
-    Story = Window:AddTab({ Title = "Story", Icon = "book" }), -- Tab Story riêng biệt
+    Story = Window:AddTab({ Title = "Story", Icon = "book" }),
+    Tower = Window:AddTab({ Title = "Tower", Icon = "layers" }),
     Event = Window:AddTab({ Title = "Event", Icon = "calendar" }),
     Settings = Window:AddTab({ Title = "Settings", Icon = "settings" })
 }
 
 local Options = Fluent.Options
 
--- --- LẤY DỮ LIỆU ĐỘNG TỪ GAME ---
 local function getMapList(path)
     local list = {}
     local success, folder = pcall(function() return path:GetChildren() end)
@@ -38,31 +37,27 @@ end
 local storyMaps = getMapList(game:GetService("ReplicatedStorage"):WaitForChild("API"):WaitForChild("Gamemode"):WaitForChild("story"))
 local raidMaps = getMapList(game:GetService("ReplicatedStorage"):WaitForChild("API"):WaitForChild("Gamemode"):WaitForChild("raid"))
 
--- =======================================================
---            TAB MAIN (DUNGEON: INFINITE & RAID)
--- =======================================================
 Tabs.Main:AddParagraph({
-    Title = "Cấu hình Dungeon",
-    Content = "Hãy cấu hình chế độ Infinite hoặc Raid và nhấn Bật Auto."
+    Title = "System Status",
+    Content = "Configure your game mode settings and enable Auto Join."
 })
 
 local ModeDropdown = Tabs.Main:AddDropdown("GameMode", {
-    Title = "Chọn Chế Độ Chơi",
+    Title = "Select Game Mode",
     Values = {"Infinite", "Raid"},
     Multi = false,
     Default = "Infinite",
 })
 
 local MapDropdown = Tabs.Main:AddDropdown("MapSelect", {
-    Title = "Chọn Bản Đồ (Map)",
+    Title = "Select Map",
     Values = storyMaps,
     Multi = false,
     Default = storyMaps[1],
 })
 
 local StageDropdown = Tabs.Main:AddDropdown("StageSelect", {
-    Title = "Chọn Stage",
-    Description = "Chọn phân đoạn từ 1 đến 6",
+    Title = "Select Stage",
     Values = {"1", "2", "3", "4", "5", "6"},
     Multi = false,
     Default = "1",
@@ -76,59 +71,60 @@ ModeDropdown:OnChanged(function(Value)
     end
 end)
 
-local ToggleAuto = Tabs.Main:AddToggle("AutoJoinToggle", {Title = "Bật Auto Loop Dungeon", Default = false })
+local ToggleAuto = Tabs.Main:AddToggle("AutoJoinToggle", {Title = "Auto Loop Dungeon", Default = false })
 
-
--- =======================================================
---                     TAB STORY (RIÊNG BIỆT)
--- =======================================================
 Tabs.Story:AddParagraph({
-    Title = "Cấu hình Chế Độ Story",
-    Content = "Tự động gửi gói tin battle_start cho chế độ Cốt Truyện."
+    Title = "Story Mode Configuration",
+    Content = "Automatically sends battle_start requests for Story Mode."
 })
 
 local StoryMapDropdown = Tabs.Story:AddDropdown("StoryMapSelect", {
-    Title = "Chọn Bản Đồ (Story Map)",
+    Title = "Select Story Map",
     Values = storyMaps,
     Multi = false,
     Default = storyMaps[1],
 })
 
 local StoryStageDropdown = Tabs.Story:AddDropdown("StoryStageSelect", {
-    Title = "Chọn Stage (1 - 8)",
+    Title = "Select Stage (1 - 8)",
     Values = {"1", "2", "3", "4", "5", "6", "7", "8"},
     Multi = false,
     Default = "1",
 })
 
 local StoryDifficultyDropdown = Tabs.Story:AddDropdown("StoryDiffSelect", {
-    Title = "Chọn Độ Khó",
+    Title = "Select Difficulty",
     Values = {"Normal", "Hard", "Nightmare"},
     Multi = false,
     Default = "Normal",
 })
 
-local ToggleStory = Tabs.Story:AddToggle("AutoStoryToggle", {Title = "Bật Auto Play Story", Default = false })
+local ToggleStory = Tabs.Story:AddToggle("AutoStoryToggle", {Title = "Auto Play Story", Default = false })
 
-
--- =======================================================
---                     TAB EVENT (GUI)
--- =======================================================
-Tabs.Event:AddParagraph({
-    Title = "Cấu hình Event Maid Sash",
-    Content = "Tự động dịch chuyển đến Maid Sash, tương tác ProximityPrompt và gửi lệnh tham gia portal."
+Tabs.Tower:AddParagraph({
+    Title = "Tower Configuration",
+    Content = "Teleports to the NPC to load the GUI, scans your highest unlocked floor, and joins automatically."
 })
 
-local ToggleEvent = Tabs.Event:AddToggle("AutoEventToggle", {Title = "Bật Auto Join Event", Default = false })
+local TowerModeDropdown = Tabs.Tower:AddDropdown("TowerModeSelect", {
+    Title = "Select Tower Type",
+    Values = {"Tower", "Hard Tower"},
+    Multi = false,
+    Default = "Tower",
+})
 
+local ToggleTower = Tabs.Tower:AddToggle("AutoTowerToggle", {Title = "Auto Climb Tower", Default = false })
 
--- =======================================================
---                   LOGIC XỬ LÝ GAME
--- =======================================================
+Tabs.Event:AddParagraph({
+    Title = "Maid Sash Event Configuration",
+    Content = "Teleports to Maid Sash, interacts with the ProximityPrompt, and fires the portal request."
+})
+
+local ToggleEvent = Tabs.Event:AddToggle("AutoEventToggle", {Title = "Auto Join Event", Default = false })
+
 local Remote = game:GetService("ReplicatedStorage"):WaitForChild("API"):WaitForChild("Utils"):WaitForChild("network"):WaitForChild("RemoteEvent")
 local LocalPlayer = game.Players.LocalPlayer
 
--- Hàm giả lập chạm bộ phận
 local function fireTouch(targetPart)
     if not targetPart then return end
     local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
@@ -140,7 +136,17 @@ local function fireTouch(targetPart)
     end
 end
 
--- Xử lý Dungeon (Infinite / Raid)
+local function teleportToNPC(npcInstance)
+    if npcInstance and npcInstance:IsA("Model") then
+        local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+        local hrp = char:WaitForChild("HumanoidRootPart", 3)
+        if hrp then
+            hrp.CFrame = npcInstance:GetPivot()
+            task.wait(0.5)
+        end
+    end
+end
+
 local function runDungeonSequence()
     local currentMode = Options.GameMode.Value
     local selectedMap = Options.MapSelect.Value
@@ -170,23 +176,55 @@ local function runDungeonSequence()
     end
 end
 
--- Xử lý Story riêng
 local function runStorySequence()
     local selectedMap = Options.StoryMapSelect.Value
     local targetStage = tonumber(Options.StoryStageSelect.Value) or 1
     local diff = Options.StoryDiffSelect.Value or "Normal"
     
-    local args = {
-        "battle_start",
-        "story",
-        selectedMap,
-        targetStage,
-        diff
-    }
-    Remote:FireServer(unpack(args))
+    Remote:FireServer(unpack({"battle_start", "story", selectedMap, targetStage, diff}))
 end
 
--- Hàm di chuyển và tương tác Event
+local function runTowerSequence()
+    local chosenTower = Options.TowerModeSelect.Value
+    local mainGui = LocalPlayer:WaitForChild("PlayerGui"):WaitForChild("main")
+    local finalHighestFloor = 1
+
+    if chosenTower == "Tower" then
+        local npc = workspace:WaitForChild("Lobby"):WaitForChild("NPC"):WaitForChild("Tower")
+        teleportToNPC(npc)
+
+        local gridPath = mainGui:WaitForChild("Tower"):WaitForChild("Base"):WaitForChild("Content"):WaitForChild("Grid")
+        
+        local maxFloor = 1
+        for _, item in ipairs(gridPath:GetChildren()) do
+            local num = tonumber(item.Name)
+            if num and num > maxFloor then
+                maxFloor = num
+            end
+        end
+        finalHighestFloor = maxFloor
+
+        Remote:FireServer(unpack({"battle_start", "tower", "Tower", finalHighestFloor, "Normal"}))
+
+    elseif chosenTower == "Hard Tower" then
+        local npc = workspace:WaitForChild("Lobby"):WaitForChild("NPC"):WaitForChild("HardTower")
+        teleportToNPC(npc)
+
+        local hardTowerFolder = mainGui:WaitForChild("HardTower")
+        
+        local maxFloor = 1
+        for _, item in ipairs(hardTowerFolder:GetChildren()) do
+            local num = tonumber(item.Name)
+            if num and num > maxFloor then
+                maxFloor = num
+            end
+        end
+        finalHighestFloor = maxFloor
+
+        Remote:FireServer(unpack({"battle_start", "hardTower", "Tower", finalHighestFloor, "Normal"}))
+    end
+end
+
 local function runEventSequence()
     local npc = workspace:FindFirstChild("Maid Sash")
     local character = LocalPlayer.Character
@@ -208,64 +246,64 @@ local function runEventSequence()
     end
 end
 
--- =======================================================
---                 VÒNG LẶP CHẠY NGẦM (LOOP)
--- =======================================================
-
--- Vòng lặp chính cho Dungeon (Mỗi 5 giây)
 task.spawn(function()
     while true do
         task.wait(5)
         if Options.AutoJoinToggle and Options.AutoJoinToggle.Value then
             local success, err = pcall(runDungeonSequence)
-            if not success then warn("Lỗi thực thi Auto Dungeon: ", err) end
+            if not success then warn("Auto Dungeon Error: ", err) end
         end
         if Fluent.Unloaded then break end
     end
 end)
 
--- Vòng lặp chính cho Story (Mỗi 5 giây)
 task.spawn(function()
     while true do
         task.wait(5)
         if Options.AutoStoryToggle and Options.AutoStoryToggle.Value then
             local success, err = pcall(runStorySequence)
-            if not success then warn("Lỗi thực thi Auto Story: ", err) end
+            if not success then warn("Auto Story Error: ", err) end
         end
         if Fluent.Unloaded then break end
     end
 end)
 
--- Vòng lặp chính cho Event (Mỗi 1 giây)
+task.spawn(function()
+    while true do
+        task.wait(6)
+        if Options.AutoTowerToggle and Options.AutoTowerToggle.Value then
+            local success, err = pcall(runTowerSequence)
+            if not success then warn("Auto Tower Error: ", err) end
+        end
+        if Fluent.Unloaded then break end
+    end
+end)
+
 task.spawn(function()
     while true do
         task.wait(1)
         if Options.AutoEventToggle and Options.AutoEventToggle.Value then
             local success, err = pcall(runEventSequence)
-            if not success then warn("Lỗi thực thi Auto Event: ", err) end
+            if not success then warn("Auto Event Error: ", err) end
         end
         if Fluent.Unloaded then break end
     end
 end)
 
-
--- =======================================================
---                 QUẢN LÝ CẤU HÌNH (SETTINGS)
--- =======================================================
 SaveManager:SetLibrary(Fluent)
 InterfaceManager:SetLibrary(Fluent)
 SaveManager:IgnoreThemeSettings()
 SaveManager:SetIgnoreIndexes({})
-InterfaceManager:SetFolder("AutoDungeonConfig")
-SaveManager:SetFolder("AutoDungeonConfig/configs")
+InterfaceManager:SetFolder("NhanPHubConfig")
+SaveManager:SetFolder("NhanPHubConfig/configs")
 InterfaceManager:BuildInterfaceSection(Tabs.Settings)
 SaveManager:BuildConfigSection(Tabs.Settings)
 
 Window:SelectTab(Tabs.Main)
 
 Fluent:Notify({
-    Title = "Hệ thống sẵn sàng",
-    Content = "Đã tách riêng Tab Story và sửa hoàn toàn lỗi giao diện!",
+    Title = "System Ready",
+    Content = "NhanP Hub executed successfully!",
     Duration = 5
 })
 
