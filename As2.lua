@@ -163,25 +163,12 @@ Tabs.Event:AddParagraph({
 local ToggleEventDungeon = Tabs.Event:AddToggle("AutoEventDungeonToggle", {Title = "Auto Loop Event Dungeon", Default = false })
 
 ---------------------------------------------------------------------------
--- REMOTES & HÀM KIỂM TRA SẢNH DÙNG CHUNG (TẤT CẢ CÁC MAP)
+-- REMOTES & HÀM KIỂM TRA SẢNH NGẦM (CHO TẤT CẢ CÁC MAP)
 ---------------------------------------------------------------------------
 local Remote = game:GetService("ReplicatedStorage"):WaitForChild("API"):WaitForChild("Utils"):WaitForChild("network"):WaitForChild("RemoteEvent")
 local LocalPlayer = game.Players.LocalPlayer
 
--- Khởi tạo bộ nhớ Master ẩn lưu trạng thái mong muốn thực tế của người chơi
-local MasterState = {
-    Dungeon = false,
-    Story = false,
-    Tower = false,
-    EventNPC = false,
-    EventDungeon = false,
-    Rush = false
-}
-
--- Biến cờ khóa trung gian chặn đứng lỗi phản hồi ngược từ SetValue()
-local UI_Lock = false
-
--- Hàm quét vị trí sảnh độc lập hoạt động chính xác 100% của bạn
+-- Hàm quét khoảng cách gốc sảnh chính xác của bạn
 local function checkLobbyValid()
     local lobby = workspace:FindFirstChild("Lobby")
     local spawnPart = lobby and lobby:FindFirstChild("SpawnLocation")
@@ -194,11 +181,10 @@ local function checkLobbyValid()
         local flatDistance = (playerPlanePos - spawnPlanePos).Magnitude
         
         if flatDistance <= 500 then
-            return true, flatDistance
+            return true
         end
-        return false, flatDistance
     end
-    return false, 0
+    return false
 end
 
 local function fireTouch(targetPart)
@@ -224,7 +210,7 @@ local function teleportToNPC(npcInstance)
 end
 
 ---------------------------------------------------------------------------
--- SEQUENCE FUNCTIONS
+-- SEQUENCE FUNCTIONS (CHỈ CHỨA LOGIC REMOTES)
 ---------------------------------------------------------------------------
 local function runDungeonSequence()
     local currentMode = Options.GameMode.Value
@@ -330,182 +316,80 @@ local function runEventDungeonSequence()
 end
 
 ---------------------------------------------------------------------------
--- ĐỒNG BỘ TOÀN BỘ CHẾ ĐỘ: TỰ ĐỘNG KHÓA / TỰ ĐỘNG BẬT LẠI KHI KHẢ NĂNG <= 500
+-- HỆ THỐNG VÒNG LẶP CHẠY NGẦM HOÀN TOÀN ĐỘC LẬP (KHÔNG CHẠM VÀO UI)
 ---------------------------------------------------------------------------
 
--- 1. Chế độ Dungeon (Main Tab)
-local dungeonThreadStarted = false
-ToggleAuto:OnChanged(function()
-    if UI_Lock then return end
-    MasterState.Dungeon = Options.AutoJoinToggle.Value
-    
-    if MasterState.Dungeon and not dungeonThreadStarted then
-        dungeonThreadStarted = true
-        task.spawn(function()
-            while true do
-                if MasterState.Dungeon then
-                    local inLobby = checkLobbyValid()
-                    if inLobby then
-                        if not Options.AutoJoinToggle.Value then 
-                            UI_Lock = true; ToggleAuto:SetValue(true); UI_Lock = false 
-                        end
-                        pcall(runDungeonSequence)
-                    else
-                        if Options.AutoJoinToggle.Value then 
-                            UI_Lock = true; ToggleAuto:SetValue(false); UI_Lock = false 
-                        end
-                    end
-                end
-                task.wait(5)
+-- 1. Luồng Dungeon ngầm
+task.spawn(function()
+    while true do
+        if Options.AutoJoinToggle and Options.AutoJoinToggle.Value then
+            if checkLobbyValid() then
+                pcall(runDungeonSequence)
             end
-        end)
+        end
+        task.wait(5)
     end
 end)
 
--- 2. Chế độ Story (Cốt truyện)
-local storyThreadStarted = false
-ToggleStory:OnChanged(function()
-    if UI_Lock then return end
-    MasterState.Story = Options.AutoStoryToggle.Value
-    
-    if MasterState.Story and not storyThreadStarted then
-        storyThreadStarted = true
-        task.spawn(function()
-            while true do
-                if MasterState.Story then
-                    local inLobby = checkLobbyValid()
-                    if inLobby then
-                        if not Options.AutoStoryToggle.Value then 
-                            UI_Lock = true; ToggleStory:SetValue(true); UI_Lock = false 
-                        end
-                        pcall(runStorySequence)
-                    else
-                        if Options.AutoStoryToggle.Value then 
-                            UI_Lock = true; ToggleStory:SetValue(false); UI_Lock = false 
-                        end
-                    end
-                end
-                task.wait(5)
+-- 2. Luồng Story ngầm
+task.spawn(function()
+    while true do
+        if Options.AutoStoryToggle and Options.AutoStoryToggle.Value then
+            if checkLobbyValid() then
+                pcall(runStorySequence)
             end
-        end)
+        end
+        task.wait(5)
     end
 end)
 
--- 3. Chế độ Tower (Leo tháp)
-local towerThreadStarted = false
-ToggleTower:OnChanged(function()
-    if UI_Lock then return end
-    MasterState.Tower = Options.AutoTowerToggle.Value
-    
-    if MasterState.Tower and not towerThreadStarted then
-        towerThreadStarted = true
-        task.spawn(function()
-            while true do
-                if MasterState.Tower then
-                    local inLobby = checkLobbyValid()
-                    if inLobby then
-                        if not Options.AutoTowerToggle.Value then 
-                            UI_Lock = true; ToggleTower:SetValue(true); UI_Lock = false 
-                        end
-                        pcall(runTowerSequence)
-                    else
-                        if Options.AutoTowerToggle.Value then 
-                            UI_Lock = true; ToggleTower:SetValue(false); UI_Lock = false 
-                        end
-                    end
-                end
-                task.wait(6)
+-- 3. Luồng Tower ngầm
+task.spawn(function()
+    while true do
+        if Options.AutoTowerToggle and Options.AutoTowerToggle.Value then
+            if checkLobbyValid() then
+                pcall(runTowerSequence)
             end
-        end)
+        end
+        task.wait(6)
     end
 end)
 
--- 4. Chế độ Event NPC (Maid Sash)
-local eventNPCThreadStarted = false
-ToggleEvent:OnChanged(function()
-    if UI_Lock then return end
-    MasterState.EventNPC = Options.AutoEventToggle.Value
-    
-    if MasterState.EventNPC and not eventNPCThreadStarted then
-        eventNPCThreadStarted = true
-        task.spawn(function()
-            while true do
-                if MasterState.EventNPC then
-                    local inLobby = checkLobbyValid()
-                    if inLobby then
-                        if not Options.AutoEventToggle.Value then 
-                            UI_Lock = true; ToggleEvent:SetValue(true); UI_Lock = false 
-                        end
-                        pcall(runEventSequence)
-                    else
-                        if Options.AutoEventToggle.Value then 
-                            UI_Lock = true; ToggleEvent:SetValue(false); UI_Lock = false 
-                        end
-                    end
-                end
-                task.wait(1)
+-- 4. Luồng Event NPC ngầm
+task.spawn(function()
+    while true do
+        if Options.AutoEventToggle and Options.AutoEventToggle.Value then
+            if checkLobbyValid() then
+                pcall(runEventSequence)
             end
-        end)
+        end
+        task.wait(1)
     end
 end)
 
--- 5. Chế độ Event Dungeon Loop
-local eventDungeonThreadStarted = false
-ToggleEventDungeon:OnChanged(function()
-    if UI_Lock then return end
-    MasterState.EventDungeon = Options.AutoEventDungeonToggle.Value
-    
-    if MasterState.EventDungeon and not eventDungeonThreadStarted then
-        eventDungeonThreadStarted = true
-        task.spawn(function()
-            while true do
-                if MasterState.EventDungeon then
-                    local inLobby = checkLobbyValid()
-                    if inLobby then
-                        if not Options.AutoEventDungeonToggle.Value then 
-                            UI_Lock = true; ToggleEventDungeon:SetValue(true); UI_Lock = false 
-                        end
-                        pcall(runEventDungeonSequence)
-                    else
-                        if Options.AutoEventDungeonToggle.Value then 
-                            UI_Lock = true; ToggleEventDungeon:SetValue(false); UI_Lock = false 
-                        end
-                    end
-                end
-                task.wait(5)
+-- 5. Luồng Event Dungeon ngầm
+task.spawn(function()
+    while true do
+        if Options.AutoEventDungeonToggle and Options.AutoEventDungeonToggle.Value then
+            if checkLobbyValid() then
+                pcall(runEventDungeonSequence)
             end
-        end)
+        end
+        task.wait(5)
     end
 end)
 
--- 6. Chế độ Rush Mode (Artifact/Relic)
-local rushThreadStarted = false
-ToggleRush:OnChanged(function()
-    if UI_Lock then return end 
-    MasterState.Rush = Options.AutoRushToggle.Value
-    
-    if MasterState.Rush and not rushThreadStarted then
-        rushThreadStarted = true
-        task.spawn(function()
-            while true do
-                if MasterState.Rush then
-                    local inLobby = checkLobbyValid()
-                    if inLobby then
-                        if not Options.AutoRushToggle.Value then 
-                            UI_Lock = true; ToggleRush:SetValue(true); UI_Lock = false 
-                        end
-                        local mode = Options.RushModeSelect.Value or "artifact_rush"
-                        local stage = tonumber(Options.RushStageSelect.Value) or 1
-                        Remote:FireServer(unpack({"battle_start", mode, "Double Dungeon", stage, "Normal"}))
-                    else
-                        if Options.AutoRushToggle.Value then 
-                            UI_Lock = true; ToggleRush:SetValue(false); UI_Lock = false 
-                        end
-                    end
-                end
-                task.wait(3)
+-- 6. Luồng Rush Mode ngầm
+task.spawn(function()
+    while true do
+        if Options.AutoRushToggle and Options.AutoRushToggle.Value then
+            if checkLobbyValid() then
+                local mode = Options.RushModeSelect.Value or "artifact_rush"
+                local stage = tonumber(Options.RushStageSelect.Value) or 1
+                Remote:FireServer(unpack({"battle_start", mode, "Double Dungeon", stage, "Normal"}))
             end
-        end)
+        end
+        task.wait(3)
     end
 end)
 
@@ -525,7 +409,7 @@ Window:SelectTab(Tabs.Main)
 
 Fluent:Notify({
     Title = "System Ready",
-    Content = "All Modes synchronized with Auto-Resume Logic!",
+    Content = "NhanP Hub: Pure Background Check Loop Activated!",
     Duration = 5
 })
 
