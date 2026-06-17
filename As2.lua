@@ -61,7 +61,7 @@ local MapDropdown = Tabs.Main:AddDropdown("MapSelect", {
 
 local StageDropdown = Tabs.Main:AddDropdown("StageSelect", {
     Title = "Select Stage",
-    Values = {"1", "2", "3", "4", "5", "6"},
+    Values = {"1", "2", "3", "4", "5", "6", "7"},
     Multi = false,
     Default = "1",
 })
