@@ -61,7 +61,7 @@ local MapDropdown = Tabs.Main:AddDropdown("MapSelect", {
 
 local StageDropdown = Tabs.Main:AddDropdown("StageSelect", {
     Title = "Select Stage",
-    Values = {"1", "2", "3", "4", "5", "6", "7"},
+    Values = {"1", "2", "3", "4", "5", "6"},
     Multi = false,
     Default = "1",
 })
@@ -125,8 +125,16 @@ local TowerModeDropdown = Tabs.Tower:AddDropdown("TowerModeSelect", {
 local ToggleTower = Tabs.Tower:AddToggle("AutoTowerToggle", {Title = "Auto Climb Tower", Default = false })
 
 ---------------------------------------------------------------------------
--- EVENT TAB
+-- EVENT TAB (ĐÃ THÊM AUTO WORLD BOSS)
 ---------------------------------------------------------------------------
+Tabs.Event:AddParagraph({
+    Title = "World Boss Mode",
+    Content = "Automatically enters World Boss (Madara Root) when in Lobby."
+})
+
+-- Nút Toggle dành riêng cho World Boss
+local ToggleWorldBoss = Tabs.Event:AddToggle("AutoWorldBossToggle", {Title = "Auto World Boss", Default = false })
+
 Tabs.Event:AddParagraph({
     Title = "Rush Mode Configuration",
     Content = "Auto join Artifact/Relic Rush only if you are near SpawnLocation (<= 500 flat studs)."
@@ -163,26 +171,21 @@ Tabs.Event:AddParagraph({
 local ToggleEventDungeon = Tabs.Event:AddToggle("AutoEventDungeonToggle", {Title = "Auto Loop Event Dungeon", Default = false })
 
 ---------------------------------------------------------------------------
--- REMOTES & HÀM KIỂM TRA SẢNH NGẦM (CHO TẤT CẢ CÁC MAP)
+-- REMOTES & HÀM KIỂM TRA SẢNH NGẦM
 ---------------------------------------------------------------------------
 local Remote = game:GetService("ReplicatedStorage"):WaitForChild("API"):WaitForChild("Utils"):WaitForChild("network"):WaitForChild("RemoteEvent")
 local LocalPlayer = game.Players.LocalPlayer
+local LobbyFolder = workspace:WaitForChild("Lobby")
+local SpawnPart = LobbyFolder:WaitForChild("SpawnLocation")
 
--- Hàm quét khoảng cách gốc sảnh chính xác của bạn
 local function checkLobbyValid()
-    local lobby = workspace:FindFirstChild("Lobby")
-    local spawnPart = lobby and lobby:FindFirstChild("SpawnLocation")
     local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
     
-    if lobby and spawnPart and root then
+    if LobbyFolder and SpawnPart and root then
         local playerPlanePos = Vector2.new(root.Position.X, root.Position.Z)
-        local spawnPlanePos = Vector2.new(spawnPart.Position.X, spawnPart.Position.Z)
-        local flatDistance = (playerPlanePos - spawnPlanePos).Magnitude
-        
-        if flatDistance <= 500 then
-            return true
-        end
+        local spawnPlanePos = Vector2.new(SpawnPart.Position.X, SpawnPart.Position.Z)
+        return (playerPlanePos - spawnPlanePos).Magnitude <= 500
     end
     return false
 end
@@ -210,7 +213,7 @@ local function teleportToNPC(npcInstance)
 end
 
 ---------------------------------------------------------------------------
--- SEQUENCE FUNCTIONS (CHỈ CHỨA LOGIC REMOTES)
+-- SEQUENCE FUNCTIONS
 ---------------------------------------------------------------------------
 local function runDungeonSequence()
     local currentMode = Options.GameMode.Value
@@ -255,7 +258,7 @@ local function runTowerSequence()
     local finalHighestFloor = 1
 
     if chosenTower == "Tower" then
-        local npc = workspace:WaitForChild("Lobby"):WaitForChild("NPC"):WaitForChild("Tower")
+        local npc = LobbyFolder:WaitForChild("NPC"):WaitForChild("Tower")
         teleportToNPC(npc)
 
         local gridPath = mainGui:WaitForChild("Tower"):WaitForChild("Base"):WaitForChild("Content"):WaitForChild("Grid")
@@ -272,7 +275,7 @@ local function runTowerSequence()
         Remote:FireServer(unpack({"battle_start", "tower", "Tower", finalHighestFloor, "Normal"}))
 
     elseif chosenTower == "Hard Tower" then
-        local npc = workspace:WaitForChild("Lobby"):WaitForChild("NPC"):WaitForChild("HardTower")
+        local npc = LobbyFolder:WaitForChild("NPC"):WaitForChild("HardTower")
         teleportToNPC(npc)
 
         local hardTowerFolder = mainGui:WaitForChild("HardTower")
@@ -315,17 +318,27 @@ local function runEventDungeonSequence()
     Remote:FireServer(unpack({"battle_start", "portals", "The Eclipse", 1, "Normal"}))
 end
 
+local function joinWorldBoss()
+    pcall(function()
+        Remote:FireServer(unpack({
+            "battle_start",
+            "world_boss",
+            "Madara Root",
+            1,
+            "Normal"
+        }))
+    end)
+end
+
 ---------------------------------------------------------------------------
--- HỆ THỐNG VÒNG LẶP CHẠY NGẦM HOÀN TOÀN ĐỘC LẬP (KHÔNG CHẠM VÀO UI)
+-- HỆ THỐNG VÒNG LẶP CHẠY NGẦM HOÀN TOÀN ĐỘC LẬP (KHÔNG CHẠM UI)
 ---------------------------------------------------------------------------
 
 -- 1. Luồng Dungeon ngầm
 task.spawn(function()
     while true do
         if Options.AutoJoinToggle and Options.AutoJoinToggle.Value then
-            if checkLobbyValid() then
-                pcall(runDungeonSequence)
-            end
+            if checkLobbyValid() then pcall(runDungeonSequence) end
         end
         task.wait(5)
     end
@@ -335,9 +348,7 @@ end)
 task.spawn(function()
     while true do
         if Options.AutoStoryToggle and Options.AutoStoryToggle.Value then
-            if checkLobbyValid() then
-                pcall(runStorySequence)
-            end
+            if checkLobbyValid() then pcall(runStorySequence) end
         end
         task.wait(5)
     end
@@ -347,9 +358,7 @@ end)
 task.spawn(function()
     while true do
         if Options.AutoTowerToggle and Options.AutoTowerToggle.Value then
-            if checkLobbyValid() then
-                pcall(runTowerSequence)
-            end
+            if checkLobbyValid() then pcall(runTowerSequence) end
         end
         task.wait(6)
     end
@@ -359,9 +368,7 @@ end)
 task.spawn(function()
     while true do
         if Options.AutoEventToggle and Options.AutoEventToggle.Value then
-            if checkLobbyValid() then
-                pcall(runEventSequence)
-            end
+            if checkLobbyValid() then pcall(runEventSequence) end
         end
         task.wait(1)
     end
@@ -371,9 +378,7 @@ end)
 task.spawn(function()
     while true do
         if Options.AutoEventDungeonToggle and Options.AutoEventDungeonToggle.Value then
-            if checkLobbyValid() then
-                pcall(runEventDungeonSequence)
-            end
+            if checkLobbyValid() then pcall(runEventDungeonSequence) end
         end
         task.wait(5)
     end
@@ -393,6 +398,18 @@ task.spawn(function()
     end
 end)
 
+-- 7. Luồng World Boss ngầm (Mới tích hợp)
+task.spawn(function()
+    while true do
+        if Options.AutoWorldBossToggle and Options.AutoWorldBossToggle.Value then
+            if checkLobbyValid() then 
+                joinWorldBoss() 
+            end
+        end
+        task.wait(5)
+    end
+end)
+
 ---------------------------------------------------------------------------
 -- MANAGERS & CONFIGS
 ---------------------------------------------------------------------------
@@ -409,7 +426,7 @@ Window:SelectTab(Tabs.Main)
 
 Fluent:Notify({
     Title = "System Ready",
-    Content = "NhanP Hub: Pure Background Check Loop Activated!",
+    Content = "NhanP Hub: World Boss integrated into Event Tab!",
     Duration = 5
 })
 
