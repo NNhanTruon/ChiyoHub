@@ -1,433 +1,711 @@
+repeat task.wait() until game:IsLoaded()
+wait(5)
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
 local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
 
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local HttpService = game:GetService("HttpService")
+local utility = game.Players.LocalPlayer.PlayerScripts.Client.Utility
+local util = require(utility)
+local data = util.data
+local playerItems = data.items or {}
+local playerStats = data.stats or {}
+
+-- Auto detect: in hub or in game
+local inHub = pcall(function() return ReplicatedStorage.Remotes.Play ~= nil end)
+local create_room, start_remote
+if inHub then
+    create_room = ReplicatedStorage.Remotes.Play:WaitForChild("create_room")
+    start_remote = ReplicatedStorage.Remotes.Play:WaitForChild("start")
+end
+
+local MATERIAL_DROPS = {
+	["Zenkai Ore"] = { world = "GT City", mode = "Story", acts = {1,2} },
+	["Ki Resonant Crystal"] = { world = "GT City", mode = "Story", acts = {3,4} },
+	["Stellar Ki Quartz"] = { world = "GT City", mode = "Story", acts = {5,6} },
+	["Limitbreak Obsidian"] = { world = "GT City", mode = "Story", acts = {7,8} },
+	["Eclipse Godstone"] = { world = "GT City", mode = "Story", acts = {9,10} },
+	["Currentbinder Rope"] = { world = "Marine Lobby", mode = "Story", acts = {1,2} },
+	["Depthglass Bottle"] = { world = "Marine Lobby", mode = "Story", acts = {3,4} },
+	["Stormwake Sailcloth"] = { world = "Marine Lobby", mode = "Story", acts = {5,6} },
+	["Beastblood Catalyst"] = { world = "Marine Lobby", mode = "Story", acts = {7,8} },
+	["King's Haki Residue"] = { world = "Marine Lobby", mode = "Story", acts = {9,10} },
+	["Shinobi Bone"] = { world = "Ninja Village", mode = "Story", acts = {1,2} },
+	["Binding Cloth"] = { world = "Ninja Village", mode = "Story", acts = {3,4} },
+	["Genjutsu Fog Vial"] = { world = "Ninja Village", mode = "Story", acts = {5,6} },
+	["Fuin Script Paper"] = { world = "Ninja Village", mode = "Story", acts = {7,8} },
+	["Chakra Fragment"] = { world = "Ninja Village", mode = "Story", acts = {9,10} },
+	["Apostle Iron"] = { world = "Eclipse (Before)", mode = "Story", acts = {1,2} },
+	["Eclipse Stone"] = { world = "Eclipse (Before)", mode = "Story", acts = {3,4} },
+	["Brand Ash"] = { world = "Eclipse (Before)", mode = "Story", acts = {5,6} },
+	["Moonlit Silver"] = { world = "Eclipse (Before)", mode = "Story", acts = {7,8} },
+	["Black Sun Amber"] = { world = "Eclipse (Before)", mode = "Story", acts = {9,10} },
+	["Gryphon"] = { world = "Marine Lobby", mode = "Squadron", act = 3 },
+	["Pelli"] = { world = "Marine Lobby", mode = "Squadron", act = 1 },
+	["Headband"] = { world = "Ninja Village", mode = "Squadron", act = 1 },
+	["Karashi's Book"] = { world = "Ninja Village", mode = "Squadron", act = 2 },
+	["Shuriken"] = { world = "Ninja Village", mode = "Squadron", act = 3 },
+	["Power Pole"] = { world = "GT City", mode = "Squadron", act = 3 },
+	["Scouter"] = { world = "GT City", mode = "Squadron", act = 2 },
+	["Zeni"] = { world = "GT City", mode = "Squadron", act = 1 },
+	["Behelit"] = { world = "Eclipse (Before)", mode = "Squadron", act = 1 },
+	["Cavalry Saber"] = { world = "Eclipse (Before)", mode = "Squadron", act = 3 },
+	["Dragon Slayer (Evo)"] = { world = "Eclipse (Before)", mode = "Squadron", act = 4 },
+	["White Behelit"] = { world = "Eclipse (Before)", mode = "Raid", act = 1 },
+	["Hogyoku Orb"] = { world = "Katakara Bridge", mode = "Challenge", act = 1 },
+    ["Gold"] = { world = "GT City", mode = "Story", acts = {1} }
+}
+
+local MAP_LIST = {
+    "GT City",
+    "Marine Lobby",
+    "Ninja Village",
+    "Eclipse (Before)",
+    "Katakara Bridge"
+}
+
 local Window = Fluent:CreateWindow({
-    Title = "NhanP Hub",
-    SubTitle = "Fixed & Optimized Version",
+    Title = "Evo & Stage Automation",
+    SubTitle = "Anime Squadron" .. (inHub and " [HUB]" or " [IN-GAME]"),
     TabWidth = 160,
-    Size = UDim2.fromOffset(580, 460),
-    Acrylic = false,
+    Size = UDim2.fromOffset(580, 520),
+    Acrylic = true,
     Theme = "Dark",
     MinimizeKey = Enum.KeyCode.LeftControl
 })
 
-local Tabs = {
-    Main = Window:AddTab({ Title = "Main", Icon = "play" }),
-    Story = Window:AddTab({ Title = "Story", Icon = "book" }),
-    Tower = Window:AddTab({ Title = "Tower", Icon = "layers" }),
-    Event = Window:AddTab({ Title = "Event", Icon = "calendar" }),
-    Settings = Window:AddTab({ Title = "Settings", Icon = "settings" })
+local Tabs = { 
+    Main = Window:AddTab({ Title = "Evo Farm", Icon = "sword" }),
+    AutoJoin = Window:AddTab({ Title = "Auto Join", Icon = "door-open" })
 }
 
 local Options = Fluent.Options
+local selectedUnit = nil
+local units = {}
+local unitIds = {}
 
-local function getMapList(path)
-    local list = {}
-    local success, folder = pcall(function() return path:GetChildren() end)
-    if success and folder then
-        for _, item in ipairs(folder) do
-            table.insert(list, item.Name)
+local function getEvoData(template)
+    if not template then return nil end
+    local d = template:FindFirstChild("data")
+    if not d then return nil end
+    local ok, mod = pcall(require, d)
+    if not ok then return nil end
+    return mod.awakening or mod.evolution or mod.evolve or mod.evo
+end
+
+local function findTemplate(name)
+    if not name then return nil end
+    local t = ReplicatedStorage.Characters:FindFirstChild(name)
+    if t then return t end
+    for _, child in ipairs(ReplicatedStorage.Characters:GetChildren()) do
+        if child.Name:lower() == name:lower() then return child end
+        if child.Name:find(name, 1, true) or name:find(child.Name, 1, true) then return child end
+    end
+    return nil
+end
+
+for id, char in pairs(data.characters or {}) do
+    if not char or not char.name then continue end
+    if unitIds[char.name] then continue end
+    unitIds[char.name] = true
+
+    local template = findTemplate(char.name)
+    if not template then continue end
+
+    local evo = getEvoData(template)
+    if not evo then continue end
+    if not evo.cost or not evo.object then continue end
+
+    local missingMats = {}
+    for mat, needed in pairs(evo.cost) do
+        local have = playerItems[mat] or playerStats[mat] or 0
+        if have < needed then
+            missingMats[#missingMats+1] = { mat = mat, have = have, need = needed, short = needed - have }
         end
     end
-    if #list == 0 then table.insert(list, "None") end
-    return list
+    local traitStr = ""
+    if char.trait then
+        traitStr = char.trait
+        if char.trait_2 then traitStr = traitStr .. "+" .. char.trait_2 end
+    end
+    units[#units+1] = {
+        id = id, name = char.name, target = evo.object.Name,
+        level = char.level, shiny = char.shiny, traitStr = traitStr,
+        missing = missingMats, numMissing = #missingMats,
+        fullCost = evo.cost
+    }
 end
 
-local storyMaps = getMapList(game:GetService("ReplicatedStorage"):WaitForChild("API"):WaitForChild("Gamemode"):WaitForChild("story"))
-local raidMaps = getMapList(game:GetService("ReplicatedStorage"):WaitForChild("API"):WaitForChild("Gamemode"):WaitForChild("raid"))
+table.sort(units, function(a,b) return a.numMissing > b.numMissing end)
 
----------------------------------------------------------------------------
--- MAIN TAB
----------------------------------------------------------------------------
-Tabs.Main:AddParagraph({
-    Title = "System Status",
-    Content = "Configure your game mode settings and enable Auto Join."
-})
+local hasWrite = pcall(function() writefile("EFarmTest.txt", "1"); delfile("EFarmTest.txt") end)
 
-local ModeDropdown = Tabs.Main:AddDropdown("GameMode", {
-    Title = "Select Game Mode",
-    Values = {"Infinite", "Raid"},
-    Multi = false,
-    Default = "Infinite",
-})
+local function saveCurrentFarmedMat(matName)
+    if not hasWrite then return end
+    pcall(function() writefile("EFarmCurrentMat.txt", matName) end)
+end
 
-local MapDropdown = Tabs.Main:AddDropdown("MapSelect", {
-    Title = "Select Map",
-    Values = storyMaps,
-    Multi = false,
-    Default = storyMaps[1],
-})
-
-local StageDropdown = Tabs.Main:AddDropdown("StageSelect", {
-    Title = "Select Stage",
-    Values = {"1", "2", "3", "4", "5", "6"},
-    Multi = false,
-    Default = "1",
-})
-
-ModeDropdown:OnChanged(function(Value)
-    if Value == "Infinite" then
-        MapDropdown:SetValues(storyMaps)
-    elseif Value == "Raid" then
-        MapDropdown:SetValues(raidMaps)
+local function loadCurrentFarmedMat()
+    if not hasWrite then return "" end
+    local ok, res = pcall(function() return readfile("EFarmCurrentMat.txt") end)
+    if ok and res then
+        return res:match("^%s*(.-)%s*$") or ""
     end
-end)
+    return ""
+end
 
-local ToggleAuto = Tabs.Main:AddToggle("AutoJoinToggle", {Title = "Auto Loop Dungeon", Default = false })
-
----------------------------------------------------------------------------
--- STORY TAB
----------------------------------------------------------------------------
-Tabs.Story:AddParagraph({
-    Title = "Story Mode Configuration",
-    Content = "Automatically sends battle_start requests for Story Mode."
-})
-
-local StoryMapDropdown = Tabs.Story:AddDropdown("StoryMapSelect", {
-    Title = "Select Story Map",
-    Values = storyMaps,
-    Multi = false,
-    Default = storyMaps[1],
-})
-
-local StoryStageDropdown = Tabs.Story:AddDropdown("StoryStageSelect", {
-    Title = "Select Stage (1 - 8)",
-    Values = {"1", "2", "3", "4", "5", "6", "7", "8"},
-    Multi = false,
-    Default = "1",
-})
-
-local StoryDifficultyDropdown = Tabs.Story:AddDropdown("StoryDiffSelect", {
-    Title = "Select Difficulty",
-    Values = {"Normal", "Hard", "Nightmare"},
-    Multi = false,
-    Default = "Normal",
-})
-
-local ToggleStory = Tabs.Story:AddToggle("AutoStoryToggle", {Title = "Auto Play Story", Default = false })
-
----------------------------------------------------------------------------
--- TOWER TAB
----------------------------------------------------------------------------
-Tabs.Tower:AddParagraph({
-    Title = "Tower Configuration",
-    Content = "Teleports to the NPC to load the GUI, scans your highest unlocked floor, and joins automatically."
-})
-
-local TowerModeDropdown = Tabs.Tower:AddDropdown("TowerModeSelect", {
-    Title = "Select Tower Type",
-    Values = {"Tower", "Hard Tower"},
-    Multi = false,
-    Default = "Tower",
-})
-
-local ToggleTower = Tabs.Tower:AddToggle("AutoTowerToggle", {Title = "Auto Climb Tower", Default = false })
-
----------------------------------------------------------------------------
--- EVENT TAB (ĐÃ THÊM AUTO WORLD BOSS)
----------------------------------------------------------------------------
-Tabs.Event:AddParagraph({
-    Title = "World Boss Mode",
-    Content = "Automatically enters World Boss (Madara Root) when in Lobby."
-})
-
--- Nút Toggle dành riêng cho World Boss
-local ToggleWorldBoss = Tabs.Event:AddToggle("AutoWorldBossToggle", {Title = "Auto World Boss", Default = false })
-
-Tabs.Event:AddParagraph({
-    Title = "Rush Mode Configuration",
-    Content = "Auto join Artifact/Relic Rush only if you are near SpawnLocation (<= 500 flat studs)."
-})
-
-local RushModeDropdown = Tabs.Event:AddDropdown("RushModeSelect", {
-    Title = "Select Rush Mode",
-    Values = {"artifact_rush", "relic_rush"},
-    Multi = false,
-    Default = "artifact_rush",
-})
-
-local RushStageDropdown = Tabs.Event:AddDropdown("RushStageSelect", {
-    Title = "Select Stage (1 - 3)",
-    Values = {"1", "2", "3"},
-    Multi = false,
-    Default = "1",
-})
-
-local ToggleRush = Tabs.Event:AddToggle("AutoRushToggle", {Title = "Auto Join Rush Mode", Default = false })
-
-Tabs.Event:AddParagraph({
-    Title = "Maid Sash Event",
-    Content = "Teleports to Maid Sash, interacts with the ProximityPrompt, and fires the portal request."
-})
-
-local ToggleEvent = Tabs.Event:AddToggle("AutoEventToggle", {Title = "Auto Join Event NPC", Default = false })
-
-Tabs.Event:AddParagraph({
-    Title = "Event Dungeon Loop",
-    Content = "Automatically runs 'The Eclipse' (Stage 1, Normal) on loop."
-})
-
-local ToggleEventDungeon = Tabs.Event:AddToggle("AutoEventDungeonToggle", {Title = "Auto Loop Event Dungeon", Default = false })
-
----------------------------------------------------------------------------
--- REMOTES & HÀM KIỂM TRA SẢNH NGẦM
----------------------------------------------------------------------------
-local Remote = game:GetService("ReplicatedStorage"):WaitForChild("API"):WaitForChild("Utils"):WaitForChild("network"):WaitForChild("RemoteEvent")
-local LocalPlayer = game.Players.LocalPlayer
-local LobbyFolder = workspace:WaitForChild("Lobby")
-local SpawnPart = LobbyFolder:WaitForChild("SpawnLocation")
-
-local function checkLobbyValid()
-    local char = LocalPlayer.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
+local function saveAutoJoinConfig()
+    if not hasWrite then return end
+    local mode = Options.StageMode and Options.StageMode.Value or "Story"
+    local world = Options.StageMap and Options.StageMap.Value or "GT City"
+    local difficulty = Options.StageDiff and Options.StageDiff.Value or "Normal"
+    local act = Options.StageAct and tonumber(Options.StageAct.Value) or 1
+    local enabled = Options.AutoJoinStage and Options.AutoJoinStage.Value or false
     
-    if LobbyFolder and SpawnPart and root then
-        local playerPlanePos = Vector2.new(root.Position.X, root.Position.Z)
-        local spawnPlanePos = Vector2.new(SpawnPart.Position.X, SpawnPart.Position.Z)
-        return (playerPlanePos - spawnPlanePos).Magnitude <= 500
-    end
-    return false
+    local config = { mode = mode, world = world, difficulty = difficulty, act = act, enabled = enabled }
+    pcall(function() writefile("EFarmAutoJoin.txt", HttpService:JSONEncode(config)) end)
 end
 
-local function fireTouch(targetPart)
-    if not targetPart then return end
-    local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-    local root = char:WaitForChild("HumanoidRootPart", 3)
-    if root and firetouchinterest then
-        firetouchinterest(root, targetPart, 1)
-        task.wait(0.1)
-        firetouchinterest(root, targetPart, 0)
+local function loadAutoJoinConfig()
+    if not hasWrite then return nil end
+    local ok, res = pcall(function() return HttpService:JSONDecode(readfile("EFarmAutoJoin.txt")) end)
+    return ok and res or nil
+end
+
+local function saveSelectedUnitName(name)
+    if not hasWrite then return end
+    pcall(function() writefile("EFarmUnit.txt", HttpService:JSONEncode(name)) end)
+end
+
+local function loadSelectedUnitName()
+    if not hasWrite then return "" end
+    local ok, data = pcall(function() return HttpService:JSONDecode(readfile("EFarmUnit.txt")) end)
+    return (ok and type(data) == "string" and data) or ""
+end
+
+local function saveUnitsList()
+    if not hasWrite then return end
+    local dataOut = {}
+    for _, u in ipairs(units) do
+        dataOut[u.name] = {
+            level = u.level, shiny = u.shiny, traitStr = u.traitStr,
+            target = u.target, fullCost = u.fullCost
+        }
+    end
+    pcall(function() writefile("EFarmUnits.txt", HttpService:JSONEncode(dataOut)) end)
+end
+
+local function loadUnitsList()
+    if not hasWrite then return {} end
+    local ok, dataIn = pcall(function()
+        return HttpService:JSONDecode(readfile("EFarmUnits.txt"))
+    end)
+    if ok and type(dataIn) == "table" then return dataIn end
+    return {}
+end
+
+if inHub then
+    saveUnitsList()
+    task.spawn(function()
+        while true do
+            task.wait(30)
+            pcall(function()
+                local m = require(utility)
+                data = m.data
+                playerItems = data.items or {}
+                playerStats = data.stats or {}
+            end)
+            for _, u in ipairs(units) do
+                local missing = {}
+                for mat, needed in pairs(u.fullCost) do
+                    local have = playerItems[mat] or playerStats[mat] or 0
+                    if have < needed then
+                        missing[#missing+1] = { mat = mat, have = have, need = needed, short = needed - have }
+                    end
+                end
+                u.missing = missing; u.numMissing = #missing
+            end
+            saveUnitsList()
+        end
+    end)
+else
+    local savedData = loadUnitsList()
+    if next(savedData) then
+        units = {}
+        for name, info in pairs(savedData) do
+            local fullCost = info.fullCost or {}
+            local missing = {}
+            for mat, needed in pairs(fullCost) do
+                local have = playerItems[mat] or playerStats[mat] or 0
+                if have < needed then
+                    missing[#missing+1] = { mat = mat, have = have, need = needed, short = needed - have }
+                end
+            end
+            local level, shiny, traitStr = info.level or 1, info.shiny or false, info.traitStr or ""
+            for _, char in pairs(data.characters or {}) do
+                if char.name == name then
+                    level = char.level; shiny = char.shiny
+                    traitStr = char.trait or ""
+                    if char.trait_2 then traitStr = traitStr .. "+" .. char.trait_2 end
+                    break
+                end
+            end
+            units[#units+1] = {
+                name = name, level = level, shiny = shiny, traitStr = traitStr,
+                target = info.target or "?", missing = missing, numMissing = #missing,
+                fullCost = fullCost
+            }
+        end
+        table.sort(units, function(a,b) return a.numMissing > b.numMissing end)
     end
 end
 
-local function teleportToNPC(npcInstance)
-    if npcInstance and npcInstance:IsA("Model") then
-        local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-        local root = char:WaitForChild("HumanoidRootPart", 3)
-        if root then
-            root.CFrame = npcInstance:GetPivot()
+local unitNames = { "Select a unit..." }
+local unitMap = { ["Select a unit..."] = nil }
+local unitByName = {}
+for _, u in ipairs(units) do
+    local shiny = u.shiny and " [SHINY]" or ""
+    local trait = u.traitStr ~= "" and " [" .. u.traitStr .. "]" or ""
+    local key = "Lv" .. tostring(u.level) .. " " .. u.name .. shiny .. trait .. " need" .. tostring(u.numMissing)
+    unitNames[#unitNames+1] = key
+    unitMap[key] = u
+    unitByName[u.name] = u
+end
+
+-- ===================================================================
+-- CONFIG CHI TIẾT TAB 1: EVO FARM
+-- ===================================================================
+Tabs.Main:AddParagraph({
+    Title = "Evo Material Farmer",
+    Content = inHub and ("HUB Mode - Đang có " .. #units .. " unit đủ điều kiện") or ("GAME Mode - Đồng bộ dữ liệu nền thành công")
+})
+
+local function refreshData(u)
+    pcall(function()
+        local m = require(utility)
+        data = m.data
+        playerItems = data.items or {}
+        playerStats = data.stats or {}
+    end)
+    if not u then return end
+    local cost = u.fullCost
+    local template = ReplicatedStorage.Characters:FindFirstChild(u.name)
+    if template and template:FindFirstChild("data") then
+        local ok, mod = pcall(require, template.data)
+        if ok then
+            cost = (mod.awakening or mod.evolution or mod.evolve or mod.evo or {}).cost
+        end
+    end
+    cost = cost or u.fullCost
+    local newMissing = {}
+    for mat, needed in pairs(cost) do
+        local have = playerItems[mat] or playerStats[mat] or 0
+        if have < needed then
+            newMissing[#newMissing+1] = { mat = mat, have = have, need = needed, short = needed - have }
+        end
+    end
+    u.missing = newMissing
+    u.numMissing = #newMissing
+end
+
+local function logMaterialStatus(unit)
+    if not unit then return end
+    print("===== Evo Material [" .. unit.name .. "] =====")
+    for mat, needed in pairs(unit.fullCost) do
+        local have = playerItems[mat] or playerStats[mat] or 0
+        print("  " .. (have >= needed and "READY" or "NEED") .. " " .. mat .. ": " .. tostring(have) .. "/" .. tostring(needed))
+    end
+    print("=====================================")
+end
+
+Tabs.Main:AddButton({
+    Title = "Cập nhật số liệu Material",
+    Description = "Làm tươi số lượng vật phẩm trong túi đồ hiện tại",
+    Callback = function()
+        pcall(function()
+            refreshData(selectedUnit)
+            if selectedUnit then pcall(showUnitInfo, selectedUnit); pcall(logMaterialStatus, selectedUnit) end
+        end)
+        Fluent:Notify({ Title = "Cập nhật", Content = "Đã làm mới số liệu kho đồ!", Duration = 3 })
+    end
+})
+
+local unitDropdown = Tabs.Main:AddDropdown("UnitSelect", {
+    Title = "Chọn mục tiêu Unit",
+    Values = unitNames, Multi = false, Default = 1,
+})
+
+local diffDropdown = Tabs.Main:AddDropdown("Difficulty", {
+    Title = "Độ khó phòng tạo (Auto Farm)",
+    Values = {"Normal", "Hard"}, Multi = false, Default = 1,
+})
+
+function showUnitInfo(unit)
+    if not unit then return end
+    local lines = {}
+    local s = unit.shiny and " [SHINY]" or ""
+    local t = unit.traitStr ~= "" and " Trait: " .. unit.traitStr or ""
+    lines[#lines+1] = unit.name .. s .. " Lv" .. unit.level .. t
+    lines[#lines+1] = "-> Target: " .. unit.target
+    lines[#lines+1] = "Danh sách yêu cầu:"
+    for mat, needed in pairs(unit.fullCost) do
+        local have = playerItems[mat] or playerStats[mat] or 0
+        local icon = have >= needed and "✓" or "✗"
+        local drop = MATERIAL_DROPS[mat]
+        local d = ""
+        if drop then
+            local a = drop.acts and drop.acts[#drop.acts] or drop.act or 1
+            d = " [" .. drop.world .. " A" .. a .. " " .. drop.mode .. "]"
+        end
+        lines[#lines+1] = icon .. " " .. mat .. ": " .. tostring(have) .. "/" .. tostring(needed) .. d
+    end
+    if unit.numMissing > 0 then
+        lines[#lines+1] = "Còn thiếu " .. unit.numMissing .. " loại:"
+        for _, m in ipairs(unit.missing) do
+            lines[#lines+1] = "  - " .. m.mat .. " x" .. tostring(m.short)
+        end
+    else
+        lines[#lines+1] = "ĐÃ ĐỦ NGUYÊN LIỆU! Có thể tiến hoá."
+    end
+    Fluent:Notify({ Title = unit.name, Content = table.concat(lines, "\n"), Duration = 10 })
+end
+
+local farming = false
+local autoFarmToggle = Tabs.Main:AddToggle("AutoFarm", {
+    Title = "Kích hoạt Auto Farm Theo Unit",
+    Description = "Tự động tìm map, nhảy map khi đủ nguyên liệu.",
+    Default = false,
+})
+
+
+-- ===================================================================
+-- CONFIG CHI TIẾT TAB 2: AUTO JOIN
+-- ===================================================================
+Tabs.AutoJoin:AddParagraph({ 
+    Title = "Hệ thống thiết lập phòng chơi", 
+    Content = "Cấu hình tự chọn độc lập, máy sẽ tự lặp lại màn này không cần điều kiện kho đồ." 
+})
+
+local stageModeDropdown = Tabs.AutoJoin:AddDropdown("StageMode", {
+    Title = "Chế độ (Mode)",
+    Values = {"Story", "Squadron", "Raid", "Challenge"}, Multi = false, Default = 1,
+})
+stageModeDropdown:OnChanged(function() saveAutoJoinConfig() end)
+
+local stageMapDropdown = Tabs.AutoJoin:AddDropdown("StageMap", {
+    Title = "Bản đồ (Map)",
+    Values = MAP_LIST, Multi = false, Default = 1,
+})
+stageMapDropdown:OnChanged(function() saveAutoJoinConfig() end)
+
+local stageDiffDropdown = Tabs.AutoJoin:AddDropdown("StageDiff", {
+    Title = "Độ khó (Difficulty)",
+    Values = {"Normal", "Hard"}, Multi = false, Default = 1,
+})
+stageDiffDropdown:OnChanged(function() saveAutoJoinConfig() end)
+
+local stageActDropdown = Tabs.AutoJoin:AddDropdown("StageAct", {
+    Title = "Hồi (Act)",
+    Values = {"1", "2", "3", "4", "5", "6", "7", "8", "9", "10"}, Multi = false, Default = 1,
+})
+stageActDropdown:OnChanged(function() saveAutoJoinConfig() end)
+
+local autoJoinEnabled = false
+local autoJoinToggle = Tabs.AutoJoin:AddToggle("AutoJoinStage", {
+    Title = "Kích hoạt Auto Join Stage",
+    Description = inHub and "Tự động tạo phòng và bắt đầu màn chơi đã chọn" or "Đang trong trận - Giữ trạng thái để tự Auto Replay",
+    Default = false,
+})
+
+
+-- ===================================================================
+-- THUẬT TOÁN LOGIC XỬ LÝ VÀ ĐIỀU HƯỚNG REMOTES
+-- ===================================================================
+local allowToggleOff = false
+local function setFarmOff()
+    allowToggleOff = true
+    farming = false
+    autoFarmToggle:SetValue(false)
+    allowToggleOff = false
+end
+
+local function setAutoJoinOff()
+    allowToggleOff = true
+    autoJoinEnabled = false
+    autoJoinToggle:SetValue(false)
+    allowToggleOff = false
+end
+
+local function getFirstDrop(u)
+    if not u then return nil end
+    for _, m in ipairs(u.missing or {}) do
+        local d = MATERIAL_DROPS[m.mat]
+        if d then return d, m.mat end
+    end
+    return nil
+end
+
+local function enterGame(u)
+    local drop, matName = getFirstDrop(u)
+    if not drop then return false end
+    saveCurrentFarmedMat(matName or "")
+    
+    local act = drop.acts and drop.acts[#drop.acts] or drop.act or 1
+    local diff = diffDropdown.Value
+    local ok, err = create_room:InvokeServer({
+        boosted = true, act = act, difficulty = diff,
+        mode = drop.mode, only_friends = false, world = drop.world
+    })
+    if not ok then return false end
+    print("Farming: " .. matName .. " at " .. drop.world .. " A" .. act .. " " .. drop.mode)
+    task.wait(1.5)
+    pcall(function() start_remote:InvokeServer() end)
+    return true
+end
+
+local function enterGameManual()
+    local mode = stageModeDropdown.Value
+    local world = stageMapDropdown.Value
+    local diff = stageDiffDropdown.Value
+    local act = tonumber(stageActDropdown.Value) or 1
+    
+    saveCurrentFarmedMat("MANUAL_STAGE")
+    saveAutoJoinConfig()
+
+    local ok, err = create_room:InvokeServer({
+        boosted = true, act = act, difficulty = diff,
+        mode = mode, only_friends = false, world = world
+    })
+    if not ok then return false end
+    print("Auto Join Stage: " .. world .. " - Mode: " .. mode .. " - Act: " .. tostring(act) .. " [" .. diff .. "]")
+    task.wait(1.5)
+    pcall(function() start_remote:InvokeServer() end)
+    return true
+end
+
+local function scanRewards(endScreen)
+    if not endScreen then return false end
+    local rewardsFrame = endScreen:FindFirstChild("Rewards")
+    local scroll = rewardsFrame and rewardsFrame:FindFirstChild("ScrollingFrame")
+    if not scroll then return false end
+    local added = false
+    for _, child in ipairs(scroll:GetChildren()) do
+        if child:IsA("ImageButton") then
+            local qtyLabel = child:FindFirstChild("Quantity")
+            local qty = qtyLabel and tonumber(qtyLabel.Text) or 0
+            if qty and qty > 0 then
+                local name = child.Name
+                if playerItems[name] ~= nil then
+                    playerItems[name] = (playerItems[name] or 0) + qty
+                    added = true
+                elseif playerStats[name] ~= nil then
+                    playerStats[name] = (playerStats[name] or 0) + qty
+                    added = true
+                end
+            end
+        end
+    end
+    return added
+end
+
+local gameReplay, gameEnding, gameTeleport
+pcall(function() gameReplay = ReplicatedStorage.Remotes.Game:WaitForChild("replay") end)
+pcall(function() gameEnding = ReplicatedStorage.Remotes.Game:WaitForChild("ending") end)
+pcall(function() gameTeleport = ReplicatedStorage.Remotes.Players:WaitForChild("teleport") end)
+
+if gameEnding then
+    gameEnding.OnClientEvent:Connect(function()
+        local endScreen = nil
+        local playerGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+        for i = 1, 10 do
+            local menus = playerGui:FindFirstChild("Menus")
+            if menus then
+                endScreen = menus:FindFirstChild("EndScreen")
+                if endScreen and endScreen.Visible then break end
+            end
             task.wait(0.5)
         end
-    end
-end
 
----------------------------------------------------------------------------
--- SEQUENCE FUNCTIONS
----------------------------------------------------------------------------
-local function runDungeonSequence()
-    local currentMode = Options.GameMode.Value
-    local selectedMap = Options.MapSelect.Value
-    local targetStage = tonumber(Options.StageSelect.Value) or 1
-    
-    if currentMode == "Infinite" then
-        local infRooms = workspace:WaitForChild("Rooms"):WaitForChild("infinite")
-        local targetRoom = infRooms:GetChildren()[4]
-        if targetRoom and targetRoom:FindFirstChild("Touch") then
-            fireTouch(targetRoom.Touch)
+        if not endScreen then
+            if gameReplay and (farming or autoJoinEnabled) then pcall(function() gameReplay:FireServer() end) end
+            return
         end
-        task.wait(0.5)
-        Remote:FireServer(unpack({"room_select", selectedMap, targetStage}))
-        task.wait(0.5)
-        Remote:FireServer(unpack({"room_start"}))
 
-    elseif currentMode == "Raid" then
-        local raidRooms = workspace:WaitForChild("Rooms"):WaitForChild("raid")
-        local targetRoom = raidRooms:GetChildren()[6]
-        if targetRoom and targetRoom:FindFirstChild("Touch") then
-            fireTouch(targetRoom.Touch)
+        pcall(scanRewards, endScreen)
+
+        -- Ưu tiên 1: Đang bật Auto Join Stage thủ công ở Tab 2
+        if autoJoinEnabled then
+            if gameReplay then pcall(function() gameReplay:FireServer() end) end
+            return
         end
-        task.wait(1.5)
-        Remote:FireServer(unpack({"room_select", selectedMap, targetStage}))
-        task.wait(1.5)
-        Remote:FireServer(unpack({"room_start"}))
-    end
-end
 
-local function runStorySequence()
-    local selectedMap = Options.StoryMapSelect.Value
-    local targetStage = tonumber(Options.StoryStageSelect.Value) or 1
-    local diff = Options.StoryDiffSelect.Value or "Normal"
-    
-    Remote:FireServer(unpack({"battle_start", "story", selectedMap, targetStage, diff}))
-end
+        -- Ưu tiên 2: Đang chạy Auto Farm Unit ở Tab 1
+        if not farming then return end
 
-local function runTowerSequence()
-    local chosenTower = Options.TowerModeSelect.Value
-    local mainGui = LocalPlayer:WaitForChild("PlayerGui"):WaitForChild("main")
-    local finalHighestFloor = 1
+        local u = selectedUnit
+        if u then
+            pcall(refreshData, u)
+            pcall(logMaterialStatus, u)
+        end
 
-    if chosenTower == "Tower" then
-        local npc = LobbyFolder:WaitForChild("NPC"):WaitForChild("Tower")
-        teleportToNPC(npc)
+        if not u or u.numMissing == 0 then
+            setFarmOff()
+            if gameTeleport then pcall(function() gameTeleport:FireServer() end) end
+            return
+        end
 
-        local gridPath = mainGui:WaitForChild("Tower"):WaitForChild("Base"):WaitForChild("Content"):WaitForChild("Grid")
+        local trackedMat = loadCurrentFarmedMat()
+        local curMatDone = true
         
-        local maxFloor = 1
-        for _, item in ipairs(gridPath:GetChildren()) do
-            local num = tonumber(item.Name)
-            if num and num > maxFloor then
-                maxFloor = num
-            end
-        end
-        finalHighestFloor = maxFloor
-
-        Remote:FireServer(unpack({"battle_start", "tower", "Tower", finalHighestFloor, "Normal"}))
-
-    elseif chosenTower == "Hard Tower" then
-        local npc = LobbyFolder:WaitForChild("NPC"):WaitForChild("HardTower")
-        teleportToNPC(npc)
-
-        local hardTowerFolder = mainGui:WaitForChild("HardTower")
-        
-        local maxFloor = 1
-        for _, item in ipairs(hardTowerFolder:GetChildren()) do
-            local num = tonumber(item.Name)
-            if num and num > maxFloor then
-                maxFloor = num
-            end
-        end
-        finalHighestFloor = maxFloor
-
-        Remote:FireServer(unpack({"battle_start", "hardTower", "Tower", finalHighestFloor, "Normal"}))
-    end
-end
-
-local function runEventSequence()
-    local npc = workspace:FindFirstChild("Maid Sash")
-    local character = LocalPlayer.Character
-    
-    if npc and character and character:FindFirstChild("HumanoidRootPart") then
-        local targetPos = npc:GetPivot().Position
-        local root = character.HumanoidRootPart
-        local distance = (root.Position - targetPos).Magnitude
-        
-        if distance > 10 then
-            root.CFrame = CFrame.new(targetPos)
+        if trackedMat and trackedMat ~= "" and trackedMat ~= "MANUAL_STAGE" then
+            local neededAmount = u.fullCost[trackedMat] or 0
+            local currentHave = playerItems[trackedMat] or playerStats[trackedMat] or 0
+            if currentHave < neededAmount then curMatDone = false end
         else
-            local prompt = npc:FindFirstChildWhichIsA("ProximityPrompt", true)
-            if prompt then
-                fireproximityprompt(prompt)
+            local _, fallbackMat = getFirstDrop(u)
+            if fallbackMat then
+                trackedMat = fallbackMat
+                saveCurrentFarmedMat(fallbackMat)
+                curMatDone = false
             end
-            Remote:FireServer(unpack({"portal_start"}))
         end
-    end
-end
 
-local function runEventDungeonSequence()
-    Remote:FireServer(unpack({"battle_start", "portals", "The Eclipse", 1, "Normal"}))
-end
-
-local function joinWorldBoss()
-    pcall(function()
-        Remote:FireServer(unpack({
-            "battle_start",
-            "world_boss",
-            "Madara Root",
-            1,
-            "Normal"
-        }))
+        if curMatDone then
+            if gameTeleport then pcall(function() gameTeleport:FireServer() end) end
+        else
+            if gameReplay then pcall(function() gameReplay:FireServer() end) end
+        end
     end)
 end
 
----------------------------------------------------------------------------
--- HỆ THỐNG VÒNG LẶP CHẠY NGẦM HOÀN TOÀN ĐỘC LẬP (KHÔNG CHẠM UI)
----------------------------------------------------------------------------
+local function doFarmLoop()
+    local u = selectedUnit
+    if not u then setFarmOff(); return end
 
--- 1. Luồng Dungeon ngầm
-task.spawn(function()
-    while true do
-        if Options.AutoJoinToggle and Options.AutoJoinToggle.Value then
-            if checkLobbyValid() then pcall(runDungeonSequence) end
+    refreshData(u)
+    logMaterialStatus(u)
+
+    if u.numMissing == 0 then setFarmOff(); return end
+    if not getFirstDrop(u) then setFarmOff(); return end
+
+    if inHub and create_room and start_remote then
+        if not enterGame(u) then setFarmOff(); return end
+    end
+    while farming do task.wait(5) end
+end
+
+local function doAutoJoinLoop()
+    if inHub and create_room and start_remote then
+        if not enterGameManual() then setAutoJoinOff(); return end
+    end
+    while autoJoinEnabled do task.wait(5) end
+end
+
+unitDropdown:OnChanged(function(val)
+    local u = unitMap[val]
+    selectedUnit = u
+    if u then
+        saveSelectedUnitName(u.name)
+        pcall(refreshData, u)
+        pcall(showUnitInfo, u)
+        pcall(logMaterialStatus, u)
+        if farming and inHub and u.numMissing > 0 then
+            task.spawn(doFarmLoop)
         end
-        task.wait(5)
     end
 end)
 
--- 2. Luồng Story ngầm
-task.spawn(function()
-    while true do
-        if Options.AutoStoryToggle and Options.AutoStoryToggle.Value then
-            if checkLobbyValid() then pcall(runStorySequence) end
+-- ĐÃ CHỈNH SỬA: Cho phép thoải mái gạt TẮT bất kỳ lúc nào ngay trong trận
+autoFarmToggle:OnChanged(function(value)
+    if value and autoJoinEnabled then
+        Fluent:Notify({ Title = "Xung đột", Content = "Vui lòng tắt Auto Join Stage trước!", Duration = 4 })
+        autoFarmToggle:SetValue(false)
+        return
+    end
+
+    farming = value
+    if value then
+        if inHub then
+            if not selectedUnit then return end
+            if selectedUnit.numMissing == 0 then setFarmOff(); return end
+            task.spawn(doFarmLoop)
         end
-        task.wait(5)
+    else
+        Fluent:Notify({ Title = "Hệ thống", Content = "Đã TẮT tính năng Auto Farm Unit thành công.", Duration = 3 })
     end
 end)
 
--- 3. Luồng Tower ngầm
-task.spawn(function()
-    while true do
-        if Options.AutoTowerToggle and Options.AutoTowerToggle.Value then
-            if checkLobbyValid() then pcall(runTowerSequence) end
+-- ĐÃ CHỈNH SỬA: Cho phép thoải mái gạt TẮT bất kỳ lúc nào ngay trong trận
+autoJoinToggle:OnChanged(function(value)
+    if value and farming then
+        Fluent:Notify({ Title = "Xung đột", Content = "Vui lòng tắt Auto Farm bên Tab 1 trước!", Duration = 4 })
+        autoJoinToggle:SetValue(false)
+        return
+    end
+
+    autoJoinEnabled = value
+    saveAutoJoinConfig()
+
+    if value then
+        if inHub then
+            task.spawn(doAutoJoinLoop)
+        else
+            Fluent:Notify({ Title = "Auto Join Stage", Content = "Đang trong game - Sẽ tự động Replay khi hết trận.", Duration = 4 })
         end
-        task.wait(6)
+    else
+        Fluent:Notify({ Title = "Hệ thống", Content = "Đã TẮT tính năng Auto Join Stage thành công.", Duration = 3 })
     end
 end)
 
--- 4. Luồng Event NPC ngầm
-task.spawn(function()
-    while true do
-        if Options.AutoEventToggle and Options.AutoEventToggle.Value then
-            if checkLobbyValid() then pcall(runEventSequence) end
-        end
-        task.wait(1)
-    end
-end)
-
--- 5. Luồng Event Dungeon ngầm
-task.spawn(function()
-    while true do
-        if Options.AutoEventDungeonToggle and Options.AutoEventDungeonToggle.Value then
-            if checkLobbyValid() then pcall(runEventDungeonSequence) end
-        end
-        task.wait(5)
-    end
-end)
-
--- 6. Luồng Rush Mode ngầm
-task.spawn(function()
-    while true do
-        if Options.AutoRushToggle and Options.AutoRushToggle.Value then
-            if checkLobbyValid() then
-                local mode = Options.RushModeSelect.Value or "artifact_rush"
-                local stage = tonumber(Options.RushStageSelect.Value) or 1
-                Remote:FireServer(unpack({"battle_start", mode, "Double Dungeon", stage, "Normal"}))
-            end
-        end
-        task.wait(3)
-    end
-end)
-
--- 7. Luồng World Boss ngầm (Mới tích hợp)
-task.spawn(function()
-    while true do
-        if Options.AutoWorldBossToggle and Options.AutoWorldBossToggle.Value then
-            if checkLobbyValid() then 
-                joinWorldBoss() 
-            end
-        end
-        task.wait(5)
-    end
-end)
-
----------------------------------------------------------------------------
--- MANAGERS & CONFIGS
----------------------------------------------------------------------------
+local TabsS = Window:AddTab({ Title = "Settings", Icon = "settings" })
 SaveManager:SetLibrary(Fluent)
 InterfaceManager:SetLibrary(Fluent)
 SaveManager:IgnoreThemeSettings()
 SaveManager:SetIgnoreIndexes({})
-InterfaceManager:SetFolder("NhanPHubConfig")
-SaveManager:SetFolder("NhanPHubConfig/configs")
-InterfaceManager:BuildInterfaceSection(Tabs.Settings)
-SaveManager:BuildConfigSection(Tabs.Settings)
+InterfaceManager:SetFolder("EvoFarmer2")
+SaveManager:SetFolder("EvoFarmer2/configs")
+InterfaceManager:BuildInterfaceSection(TabsS)
+SaveManager:BuildConfigSection(TabsS)
 
-Window:SelectTab(Tabs.Main)
-
-Fluent:Notify({
-    Title = "System Ready",
-    Content = "NhanP Hub: World Boss integrated into Event Tab!",
-    Duration = 5
-})
-
+Window:SelectTab(1)
 SaveManager:LoadAutoloadConfig()
+
+-- KHỞI TẠO ĐỒNG BỘ CONFIG CŨ CHUẨN XÁC
+task.spawn(function()
+    task.wait(0.5)
+    
+    local savedJoin = loadAutoJoinConfig()
+    if savedJoin then
+        pcall(function() stageModeDropdown:SetValue(savedJoin.mode) end)
+        pcall(function() stageMapDropdown:SetValue(savedJoin.world) end)
+        pcall(function() stageDiffDropdown:SetValue(savedJoin.difficulty) end)
+        pcall(function() stageActDropdown:SetValue(tostring(savedJoin.act)) end)
+        task.wait(0.2)
+        if savedJoin.enabled and not farming then
+            autoJoinToggle:SetValue(true)
+        end
+    end
+
+    if not selectedUnit then
+        local savedName = loadSelectedUnitName()
+        if savedName ~= "" and unitByName[savedName] then
+            selectedUnit = unitByName[savedName]
+            for key, u in pairs(unitMap) do
+                if u == selectedUnit then
+                    unitDropdown:SetValue(key)
+                    break
+                end
+            end
+        end
+    end
+    if selectedUnit then refreshData(selectedUnit) end
+    if farming and inHub and selectedUnit and selectedUnit.numMissing > 0 then
+        task.spawn(doFarmLoop)
+    elseif autoJoinEnabled and inHub then
+        task.spawn(doAutoJoinLoop)
+    end
+end)
+
+Fluent:Notify({ Title = "Hệ thống", Content = "Đã mở khóa bật/tắt Toggle thoải mái ngay trong màn chơi!", Duration = 5 })
+ 
